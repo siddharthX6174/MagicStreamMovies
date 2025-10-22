@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	controllers "github.com/siddharthX6174/MagicStreamMovies/Server/MagicStreamMoviesServer/controllers"
+	// controllers "github.com/siddharthX6174/MagicStreamMovies/Server/MagicStreamMoviesServer/controllers"
+	"github.com/siddharthX6174/MagicStreamMovies/Server/MagicStreamMoviesServer/routes"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -39,12 +40,9 @@ func main() {
 		c.String(200, "Hello, MagicStreamMoviesServer!") 
 	})
 
+	routes.SetupProtectedRoutes(router, client)
+	routes.SetupUnProtectedRoutes(router, client)
 
-	router.GET("/movies", controllers.GetMovies())
-	router.GET("/movie/:imdb_id", controllers.GetMovieByID())
-	router.POST("/addmovie", controllers.AddMovie(client))
-	router.POST("/register", controllers.RegisterUser())
-	router.POST("/login", controllers.LoginUser(client))
 
 	if err := router.Run(":8080"); err != nil {
 		fmt.Println("Failed to start server:", err)
