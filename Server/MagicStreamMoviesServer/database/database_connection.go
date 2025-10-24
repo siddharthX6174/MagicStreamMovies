@@ -19,7 +19,8 @@ func Connect() *mongo.Client {
 
     MongoDb := os.Getenv("MONGODB_URI")
     if MongoDb == "" {
-        log.Fatal("MONGODB_URI not set!")
+        MongoDb = "mongodb://localhost:27017"
+        log.Println("Using default MongoDB URI:", MongoDb)
     }
 
     clientOptions := options.Client().ApplyURI(MongoDb)
@@ -50,6 +51,10 @@ func OpenCollection(collectionName string, client *mongo.Client) *mongo.Collecti
 	}
 
 	databaseName := os.Getenv("DATABASE_NAME")
+	if databaseName == "" {
+		databaseName = "MagicStreamMovies"
+		log.Println("Using default database name:", databaseName)
+	}
 
 	fmt.Println("DATABASE_NAME: ", databaseName)
 

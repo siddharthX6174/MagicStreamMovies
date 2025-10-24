@@ -151,3 +151,149 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 
 	}
 }
+
+//--------------------------------------------------------------------------------------------
+// Logout user by clearing tokens from database
+func LogoutHandler(client *mongo.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		// Get user ID from the request (could be from token or request body)
+		var logoutRequest struct {
+			UserID string `json:"user_id" validate:"required"`
+		}
+
+		// Try to bind JSON first
+		if err := c.ShouldBindJSON(&logoutRequest); err != nil {
+			// If JSON binding fails, try to get user_id from query parameter
+			userID := c.Query("user_id")
+			if userID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+				return
+			}
+			logoutRequest.UserID = userID
+		}
+
+		// Validate user ID
+		validate := validator.New()
+		if err := validate.Struct(logoutRequest); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID", "details": err.Error()})
+			return
+		}
+
+		// Get user collection
+		var userCollection *mongo.Collection = database.OpenCollection("users", client)
+
+		// Check if user exists
+		var existingUser model.User
+		err := userCollection.FindOne(ctx, bson.D{{Key: "user_id", Value: logoutRequest.UserID}}).Decode(&existingUser)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		// Clear tokens by setting them to empty strings
+		filter := bson.D{{Key: "user_id", Value: logoutRequest.UserID}}
+		update := bson.D{
+			{Key: "$set", Value: bson.D{
+				{Key: "token", Value: ""},
+				{Key: "refresh_token", Value: ""},
+				{Key: "update_at", Value: time.Now()},
+			}},
+		}
+
+		result, err := userCollection.UpdateOne(ctx, filter, update)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to logout user"})
+			return
+		}
+
+		// Check if any document was modified
+		if result.ModifiedCount == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No changes made during logout"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "User logged out successfully",
+			"user_id": logoutRequest.UserID,
+		})
+	}
+}
+
+//--------------------------------------------------------------------------------------------
+// Refresh access token using refresh token
+func RefreshTokenHandler(client *mongo.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		// Define request structure for refresh token
+		var refreshRequest struct {
+			RefreshToken string `json:"refresh_token" validate:"required"`
+		}
+
+		// Bind JSON request body
+		if err := c.ShouldBindJSON(&refreshRequest); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format"})
+			return
+		}
+
+		// Validate the refresh token
+		validate := validator.New()
+		if err := validate.Struct(refreshRequest); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Refresh token is required", "details": err.Error()})
+			return
+		}
+
+		// Validate the refresh token
+		claims, err := utils.ValidateRefreshToken(refreshRequest.RefreshToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired refresh token"})
+			return
+		}
+
+		// Get user collection
+		var userCollection *mongo.Collection = database.OpenCollection("users", client)
+
+		// Check if user exists and refresh token matches
+		var foundUser model.User
+		err = userCollection.FindOne(ctx, bson.D{
+			{Key: "user_id", Value: claims.UserID},
+			{Key: "refresh_token", Value: refreshRequest.RefreshToken},
+		}).Decode(&foundUser)
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token or user not found"})
+			return
+		}
+
+		// Generate new tokens
+		newToken, newRefreshToken, err := utils.GenerateAllTokens(
+			foundUser.Email,
+			foundUser.FirstName,
+			foundUser.LastName,
+			foundUser.Role,
+			foundUser.UserID,
+		)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate new tokens"})
+			return
+		}
+
+		// Update tokens in database
+		err = utils.UpdateAllTokens(foundUser.UserID, newToken, newRefreshToken, client)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tokens"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Tokens refreshed successfully",
+			"token":   newToken,
+			"refresh_token": newRefreshToken,
+		})
+	}
+}

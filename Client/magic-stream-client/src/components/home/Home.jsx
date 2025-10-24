@@ -1,0 +1,50 @@
+import {useState, useEffect} from 'react';
+import axiosClient from '../../api/axiosConfig'
+import Movies from '../movies/Movies';
+import Spinner from '../spinner/Spinner';
+
+const Home =({updateMovieReview}) => {
+    const [movies, setMovies] = useState([]);
+    const [loading, setLoading] = useState(false)
+    const [message, setMessage] = useState();
+
+    useEffect(() => {
+        const fetchMovies = async () => {
+            setLoading(true);
+            setMessage("");
+            try{
+                console.log('Fetching movies from:', axiosClient.defaults.baseURL + '/movies');
+                const response = await axiosClient.get('/movies');
+                console.log('Movies response:', response.data);
+                setMovies(response.data);
+                if (response.data.length === 0){
+                    setMessage('There are currently no movies available')
+                }
+
+            }catch(error){
+                console.error('Error fetching movies:', error)
+                console.error('Error details:', error.response?.data || error.message);
+                setMessage("Error fetching movies: " + (error.response?.data?.error || error.message))
+            }finally{
+                setLoading(false)
+            }
+        }
+        fetchMovies();
+    }, []);
+
+    return (
+        <>
+            {loading ? (
+                <Spinner/>
+            ):  (
+                <Movies movies ={movies} updateMovieReview={updateMovieReview} message ={message}/>
+            )}
+        </>
+
+    );
+
+};
+
+export default Home;
+
+
