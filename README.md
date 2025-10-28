@@ -37,11 +37,3 @@ It combines:
 
 ---
 
-## ⚙️ Installation & Setup  
-
-Follow these steps to run MagicStream locally 👇  
-
-### 1️⃣ Clone the Repository  
-```bash
-git clone https://github.com/your-username/MagicStream.git
-cd MagicStream
